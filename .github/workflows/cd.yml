@@ -1,0 +1,55 @@
+name: CD - Main
+
+permissions:
+  contents: write
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Incrementar version
+        shell: bash
+        run: |
+          CURRENT=$(grep -oP 'AppVersion-\K[0-9]+' README.md)
+          NEXT=$((CURRENT + 1))
+          DATE=$(date '+%Y-%m-%d %H:%M:%S')
+          sed -i "s/AppVersion-$CURRENT/AppVersion-$NEXT - $DATE/" README.md
+
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --staged --quiet || git commit -m "Incrementar version de aplicacion"
+          git push
+
+  validate-prod:
+    needs: bump-version
+    runs-on: self-hosted
+
+    steps:
+      - name: Validar PROD_TOKEN
+        shell: powershell
+        env:
+          PROD_TOKEN: ${{ secrets.PROD_TOKEN }}
+        run: |
+          if ($env:PROD_TOKEN -eq $env:LOCAL_PROD_TOKEN) {
+            Write-Host "PROD_TOKEN coincide con LOCAL_PROD_TOKEN"
+          } else {
+            Write-Host "PROD_TOKEN NO coincide con LOCAL_PROD_TOKEN"
+            exit 1
+          }
